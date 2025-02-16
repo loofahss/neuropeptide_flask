@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 
 # 创建一个名为 "api" 的蓝图
-api_bp = Blueprint('api', __name__)
+api = Blueprint('api', __name__)
 
 from flask import Flask, request, jsonify
 import pymysql
@@ -11,9 +11,9 @@ import random
 #2.peptideid返回peptidesequence,proteinid,proteinsequence,pdbdata,string_len(proteinsequence)
 # 显示pEI值,进行筛选
 # 通过proteinid,peptideid查询pdbdata,显示pdbdata,pEI,peptidesequence
-app = Flask(__name__)
+# app = Flask(__name__)
 # CORS(app)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(api, resources={r"/*": {"origins": "*"}})
 # 打开数据库连接
 def connect():
     return pymysql.connect(host='localhost',
@@ -22,11 +22,11 @@ def connect():
                         passwd='your_password')
 
 
-@app.route("/")
+@api.route("/")
 def index():
     return "Hello World!"
 
-@app.route("/query_protein/<string:protein_id>", methods=["GET"])
+@api.route("/query_protein/<string:protein_id>", methods=["GET"])
 def query_protein(protein_id):
     db=connect()
     # 调用查询函数并返回结果
@@ -49,7 +49,7 @@ def query_protein(protein_id):
 #     return {"proteinsequence":proteinsequence}
 
 
-@app.route("/query/proteinsequence", methods=["POST"])
+@api.route("/query/proteinsequence", methods=["POST"])
 def query_byprotein():
     data = request.json  # 使用 request.json 获取 JSON 数据
     protein_id = data.get("protein_id")
@@ -95,7 +95,7 @@ def query_byprotein():
     
     return jsonify(result)
 
-@app.route("/query/peptideact", methods=["POST"])
+@api.route("/query/peptideact", methods=["POST"])
 def query_peptideact():
     db=connect()
     cursor=db.cursor()
@@ -119,7 +119,7 @@ def query_peptideact():
     return jsonify(proteins)
 
 
-@app.route("/query/pdbdata",methods=["POST"])
+@api.route("/query/pdbdata",methods=["POST"])
 def query_pdbdata():
     db=connect()
     data = request.json  # 使用 request.json 获取 JSON 数据
@@ -136,17 +136,24 @@ def query_pdbdata_info(connection,proteinid,peptideid):
         # 创建游标对象
         cursor = connection.cursor()
         sql = """
-        SELECT pp.pdbdata
+        SELECT pp.pdbdata,pp.PEI
         FROM Protein_Peptide pp
         JOIN Proteins p ON pp.proteinid = p.proteinid
         JOIN Peptides pt ON pp.peptideid = pt.peptideid
+        
         WHERE p.proteinid = %s
             AND pt.peptideid = %s;
         """
         print(proteinid, peptideid)
         cursor.execute(sql, (proteinid, peptideid))
-        result['pdbData'] = cursor.fetchone()
- 
+        # result['pdbData'] = cursor.fetchone()
+        row = cursor.fetchone()
+        if row:
+            result['pdbData'] = row[0]
+            result['PEI'] = row[1]
+        else:
+            result['error'] = "No data found for the given proteinid and peptideid."
+
         
     except Exception as e:
         result['error'] = f"Error querying pdbdata information: {str(e)}"
@@ -180,7 +187,7 @@ def query_protein_info(connection, protein_id):
     
     return protein_info[1]
 
-@app.route("/query_protein/<string:protein_id>", methods=["GET"])
+@api.route("/query_protein/<string:protein_id>", methods=["GET"])
 def query_interface_info(connection, protein_id):
     result = {}
     try:
@@ -226,4 +233,4 @@ def query_interface_info(connection, protein_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    api.run(debug=True)
