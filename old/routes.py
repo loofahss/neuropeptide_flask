@@ -1,5 +1,4 @@
-import gzip
-from flask import Blueprint, Response, request, jsonify
+from flask import Blueprint, request, jsonify
 
 # 创建一个名为 "api" 的蓝图
 api = Blueprint('api', __name__)
@@ -8,7 +7,6 @@ from flask import Flask, request, jsonify
 import pymysql
 from flask_cors import CORS
 import random
-import json
 #1.proteinid返回proteinsequence,peptideid,peptidesequence,pdbdata,string_len(peptidesequence)
 #2.peptideid返回peptidesequence,proteinid,proteinsequence,pdbdata,string_len(proteinsequence)
 # 显示pEI值,进行筛选
@@ -65,7 +63,7 @@ def query_byprotein():
 
         # 查询 peptides
         peptides_query = """
-            SELECT pp1.peptideid, p.peptidesequence, pp1.PEI
+            SELECT pp1.peptideid, p.peptideSequence, pp1.PEI ,pp1.pdbData
             FROM protein_peptide AS pp1
             JOIN peptides AS p ON pp1.peptideid = p.peptideid
             WHERE pp1.proteinid =%s
@@ -79,7 +77,7 @@ def query_byprotein():
                 'peptideid': peptide[0],
                 'peptideSequence': peptide[1],
                 'PEI': peptide[2],
-                'pdb':''
+                'pdb': peptide[3]
             })
         
         result = {
@@ -88,35 +86,31 @@ def query_byprotein():
         }
         print("peptidesequence:")
         print(peptides[2  ])
-        json_data= json.dumps(result)
-        compressed_data=gzip.compress(json_data.encode('utf-8'))
-        return Response(compressed_data,mimetype='application/gzip')
     except Exception as e:
         result = {'error': f"Error querying protein information: {str(e)}"}
     finally:
         cursor.close()
         db.close()
     
+    return jsonify(result)
 
 
 @api.route("/peptidesequence", methods=["POST"])
 def query_bypeptide():
-    data = request.json
+    data = request.json  # 使用 request.json 获取 JSON 数据
     protein_id = data.get("protein_id")
     db = connect()
-    print("protein_id:")
-    print(protein_id)
+    
     try:
         cursor = db.cursor()
+        # 查询 proteinsequence
         proteinsequence_query = "SELECT peptidesequence FROM peptides WHERE peptideid = %s"
         cursor.execute(proteinsequence_query, (protein_id,))
         proteinsequence = cursor.fetchone()[0]
-        print(proteinsequence)
-        
 
-        
+        # 查询 peptides
         peptides_query = """
-            SELECT pp1.proteinid, p.ProteinSequence, pp1.PEI
+            SELECT pp1.proteinid, p.proteinSequence, pp1.PEI ,pp1.pdbData
             FROM protein_peptide AS pp1
             JOIN proteins AS p ON pp1.proteinid = p.proteinid
             WHERE pp1.peptideid =%s
@@ -130,27 +124,22 @@ def query_bypeptide():
                 'peptideid': peptide[0],
                 'peptideSequence': peptide[1],
                 'PEI': peptide[2],
-                'pdb': ''
+                'pdb': peptide[3]
             })
         
         result = {
             'proteinsequence': proteinsequence,
             'peptides': peptides
         }
-        
-        # 将结果转换为JSON字符串并压缩
-        json_data = json.dumps(result)
-        compressed_data = gzip.compress(json_data.encode('utf-8'))
-        
-        return Response(compressed_data, mimetype='application/gzip')
-        
+        print("peptidesequence:")
+        print(peptides[2  ])
     except Exception as e:
         result = {'error': f"Error querying protein information: {str(e)}"}
-        print(result)
-        return jsonify(result)
     finally:
         cursor.close()
         db.close()
+    
+    return jsonify(result)
 
 
 
@@ -176,6 +165,7 @@ def query_pdbdata_info(connection,proteinid,peptideid):
         FROM protein_peptide pp
         JOIN proteins p ON pp.proteinid = p.proteinid
         JOIN peptides pt ON pp.peptideid = pt.peptideid
+        
         WHERE p.proteinid = %s
             AND pt.peptideid = %s;
         """
